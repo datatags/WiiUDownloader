@@ -466,7 +466,8 @@ int downloadTitle(const char *titleID, const char *name, bool decrypt, bool *can
     if (decrypt && !cancelled) {
         char *argv[2] = {"WiiUDownloader", dirname(output_path)};
         if (cdecrypt(2, argv, showProgressDialog) != 0) {
-            showError("Error: There was a problem decrypting the files.\nThe path specified for the download might be too long.\nPlease try downloading the files to a shorter path and try again.");
+            //showError("Error: There was a problem decrypting the files.\nThe path specified for the download might be too long.\nPlease try downloading the files to a shorter path and try again.");
+            printf("Error: There was a problem decrypting the files.\nThe path specified for the download might be too long.\nPlease try downloading the files to a shorter path and try again.");
             ret = -2;
             goto out;
         }
