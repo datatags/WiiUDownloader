@@ -327,7 +327,7 @@ int downloadTitle(const char *titleID, const char *name, bool decrypt, bool *can
     result = mkdir(output_dir, 0777);
 #endif
     if (result != 0) {
-        printf("Skipping directory %s as it already exists... or something", output_dir);
+        printf("Skipping directory %s as it already exists... or something\n", output_dir);
         free(output_dir);
         return 0;
     }
