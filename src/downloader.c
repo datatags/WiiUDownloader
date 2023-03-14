@@ -319,14 +319,18 @@ int downloadTitle(const char *titleID, const char *name, bool decrypt, bool *can
     snprintf(base_url, 69, "http://ccs.cdn.c.shop.nintendowifi.net/ccs/download/%s", titleID);
     char download_url[81];
     char output_path[strlen(output_dir) + 14];
-
+    int result;
 // create the output directory if it doesn't exist
 #ifdef _WIN32
-    mkdir(output_dir);
+    result = mkdir(output_dir);
 #else
-    mkdir(output_dir, 0777);
+    result = mkdir(output_dir, 0777);
 #endif
-
+    if (result != 0) {
+        printf("Skipping directory %s as it already exists... or something", output_dir);
+        free(output_dir);
+        return 0;
+    }
     // initialize curl
     curl_global_init(CURL_GLOBAL_ALL);
 
