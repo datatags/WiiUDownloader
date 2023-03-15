@@ -225,7 +225,7 @@ static int downloadFile(const char *download_url, const char *output_path, struc
     curl_easy_setopt(progress->handle, CURLOPT_WRITEFUNCTION, write_function);
     curl_easy_setopt(progress->handle, CURLOPT_URL, download_url);
     curl_easy_setopt(progress->handle, CURLOPT_NOPROGRESS, 0L);
-    curl_easy_setopt(progress->handle, CURLOPT_XFERINFOFUNCTION, progress_func);
+    //curl_easy_setopt(progress->handle, CURLOPT_XFERINFOFUNCTION, progress_func);
     curl_easy_setopt(progress->handle, CURLOPT_PROGRESSDATA, progress);
 
     curl_easy_setopt(progress->handle, CURLOPT_WRITEDATA, file);
