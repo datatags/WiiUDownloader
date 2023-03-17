@@ -576,6 +576,7 @@ int cdecrypt(int argc, char **argv, bool showProgressDialog) {
                     if (is_file(str))
                         break;
                 }
+                printf("  Opening %s\n", str);
                 src = fopen_utf8(str, "rb");
                 if (src == NULL) {
                     fprintf(stderr, "ERROR: Could not open: '%s'\n", str);
