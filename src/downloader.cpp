@@ -334,6 +334,7 @@ int downloadTitle(const char *titleID, const char *name, bool decrypt, bool dele
     char base_url[69];
     snprintf(base_url, 69, "http://ccs.cdn.c.shop.nintendowifi.net/ccs/download/%s", titleID);
     char download_url[81];
+    int result;
     char *output_path = (char *)malloc(strlen(output_dir) + 14);
 
 // create the output directory if it doesn't exist
