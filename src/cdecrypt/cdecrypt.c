@@ -20,7 +20,6 @@
 
 #include <assert.h>
 #include <inttypes.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -30,8 +29,10 @@
 #include <mbedtls/aes.h>
 #include <mbedtls/sha1.h>
 
+#include <downloader.h>
 #include <cdecrypt/cdecrypt.h>
 #include <gtk/gtk.h>
+#include <log.h>
 
 #define MAX_ENTRIES       90000
 #define MAX_LEVELS        16
@@ -55,20 +56,18 @@ uint8_t title_key[16];
 uint64_t h0_count = 0;
 uint64_t h0_fail = 0;
 
-#pragma pack(1)
-
 enum ContentType {
     CONTENT_REQUIRED = (1 << 0), // Not sure
     CONTENT_SHARED = (1 << 15),
     CONTENT_OPTIONAL = (1 << 14),
-};
+} __attribute__((__packed__));
 
 typedef struct
 {
     uint16_t IndexOffset;  //  0  0x204
     uint16_t CommandCount; //  2  0x206
     uint8_t SHA2[32];      //  12 0x208
-} ContentInfo;
+} __attribute__((__packed__)) ContentInfo;
 
 typedef struct
 {
@@ -77,7 +76,7 @@ typedef struct
     uint16_t Type;    //  6  0xB0A
     uint64_t Size;    //  8  0xB0C
     uint8_t SHA2[32]; //  16 0xB14
-} Content;
+} __attribute__((__packed__)) Content;
 
 typedef struct
 {
@@ -108,14 +107,14 @@ typedef struct
 
     Content Contents[]; // 0x1E4
 
-} TitleMetaData;
+} __attribute__((__packed__)) TitleMetaData;
 
 struct FSTInfo {
     uint32_t Unknown;
     uint32_t Size;
     uint32_t UnknownB;
     uint32_t UnknownC[6];
-};
+} __attribute__((__packed__));
 
 struct FST {
     uint32_t MagicBytes;
@@ -125,7 +124,7 @@ struct FST {
     uint32_t UnknownB[5];
 
     struct FSTInfo FSTInfos[];
-};
+} __attribute__((__packed__));
 
 struct FEntry {
     union {
@@ -133,7 +132,7 @@ struct FEntry {
         {
             uint32_t Type : 8;
             uint32_t NameOffset : 24;
-        };
+        } __attribute__((__packed__));
         uint32_t TypeName;
     };
     union {
@@ -141,43 +140,17 @@ struct FEntry {
         {
             uint32_t FileOffset;
             uint32_t FileLength;
-        };
+        } __attribute__((__packed__));
         struct // Dir Entry
         {
             uint32_t ParentOffset;
             uint32_t NextOffset;
-        };
+        } __attribute__((__packed__));
         uint32_t entry[2];
     };
     uint16_t Flags;
     uint16_t ContentID;
-};
-
-static GtkWidget *progress_bar;
-static GtkWidget *window;
-
-static void progressDialog() {
-    gtk_init(NULL, NULL);
-
-    //Create window
-    window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    gtk_window_set_title(GTK_WINDOW(window), "Download Progress");
-    gtk_window_set_default_size(GTK_WINDOW(window), 300, 50);
-    gtk_container_set_border_width(GTK_CONTAINER(window), 10);
-    gtk_window_set_modal(GTK_WINDOW(window), TRUE);
-
-    //Create progress bar
-    progress_bar = gtk_progress_bar_new();
-    gtk_progress_bar_set_show_text(GTK_PROGRESS_BAR(progress_bar), TRUE);
-    gtk_progress_bar_set_text(GTK_PROGRESS_BAR(progress_bar), "Downloading");
-
-    //Create container for the window
-    GtkWidget *main_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
-    gtk_container_add(GTK_CONTAINER(window), main_box);
-    gtk_box_pack_start(GTK_BOX(main_box), progress_bar, FALSE, FALSE, 0);
-
-    gtk_widget_show_all(window);
-}
+} __attribute__((__packed__));
 
 static bool file_dump(const char *path, void *buf, size_t len) {
     assert(buf != NULL);
@@ -185,13 +158,13 @@ static bool file_dump(const char *path, void *buf, size_t len) {
 
     FILE *dst = fopen_utf8(path, "wb");
     if (dst == NULL) {
-        fprintf(stderr, "ERROR: Could not dump file '%s'\n", path);
+        log_error("Could not dump file '%s'\n", path);
         return false;
     }
 
     bool r = (fwrite(buf, 1, len, dst) == len);
     if (!r)
-        fprintf(stderr, "ERROR: Failed to dump file '%s'\n", path);
+        log_error("Failed to dump file '%s'\n", path);
 
     fclose(dst);
     return r;
@@ -206,21 +179,21 @@ static __inline char ascii(char s) {
 static void hexdump(uint8_t *buf, size_t len) {
     size_t i, off;
     for (off = 0; off < len; off += 16) {
-        printf("%08x  ", (uint32_t) off);
+        log_trace("%08x  ", (uint32_t) off);
         for (i = 0; i < 16; i++)
             if ((i + off) >= len)
-                printf("   ");
+                log_trace("   ");
             else
-                printf("%02x ", buf[off + i]);
+                log_trace("%02x ", buf[off + i]);
 
-        printf(" ");
+        log_trace(" ");
         for (i = 0; i < 16; i++) {
             if ((i + off) >= len)
-                printf(" ");
+                log_trace(" ");
             else
-                printf("%c", ascii(buf[off + i]));
+                log_trace("%c", ascii(buf[off + i]));
         }
-        printf("\n");
+        log_trace("\n");
     }
 }
 
@@ -242,7 +215,7 @@ static bool extract_file_hash(FILE *src, uint64_t part_data_offset, uint64_t fil
 
     FILE *dst = fopen_utf8(path, "wb");
     if (dst == NULL) {
-        fprintf(stderr, "ERROR: Could not create '%s'\n", path);
+        log_error("Could not create '%s'\n", path);
         goto out;
     }
 
@@ -280,7 +253,7 @@ static bool extract_file_hash(FILE *src, uint64_t part_data_offset, uint64_t fil
             hexdump(hash, SHA_DIGEST_LENGTH);
             hexdump(hashes, 0x100);
             hexdump(dec, 0x100);
-            fprintf(stderr, "ERROR: Could not verify H0 hash\n");
+            log_error("Could not verify H0 hash\n");
             goto out;
         }
 
@@ -321,7 +294,7 @@ static bool extract_file(FILE *src, uint64_t part_data_offset, uint64_t file_off
 
     FILE *dst = fopen_utf8(path, "wb");
     if (dst == NULL) {
-        fprintf(stderr, "ERROR: Could not create '%s'\n", path);
+        log_error("Could not create '%s'\n", path);
         goto out;
     }
     uint8_t iv[16];
@@ -362,7 +335,7 @@ out:
 }
 #undef BLOCK_SIZE
 
-int cdecrypt(int argc, char **argv, bool showProgressDialog) {
+int cdecrypt(int argc, char **argv) {
     int r = EXIT_FAILURE;
     char str[PATH_MAX], *tmd_path = NULL, *tik_path = NULL;
     FILE *src = NULL;
@@ -371,14 +344,14 @@ int cdecrypt(int argc, char **argv, bool showProgressDialog) {
     const char *pattern[] = {"%s%c%08x.app", "%s%c%08X.app", "%s%c%08x", "%s%c%08X"};
 
     if (argc < 2) {
-        printf("%s %s - Wii U NUS content file decrypter\n"
-               "Copyright (c) 2020-2022 VitaSmith, Copyright (c) 2013-2015 crediar\n"
-               "Visit https://github.com/VitaSmith/cdecrypt for official source and downloads.\n\n"
-               "Usage: %s <file or directory>\n\n"
-               "This program is free software; you can redistribute it and/or modify it under\n"
-               "the terms of the GNU General Public License as published by the Free Software\n"
-               "Foundation; either version 3 of the License or any later version.\n",
-               _appname(argv[0]), APP_VERSION_STR, _appname(argv[0]));
+        log_trace("%s %s - Wii U NUS content file decrypter\n"
+                  "Copyright (c) 2020-2022 VitaSmith, Copyright (c) 2013-2015 crediar\n"
+                  "Visit https://github.com/VitaSmith/cdecrypt for official source and downloads.\n\n"
+                  "Usage: %s <file or directory>\n\n"
+                  "This program is free software; you can redistribute it and/or modify it under\n"
+                  "the terms of the GNU General Public License as published by the Free Software\n"
+                  "Foundation; either version 3 of the License or any later version.\n",
+                  _appname(argv[0]), APP_VERSION_STR, _appname(argv[0]));
         return EXIT_SUCCESS;
     }
 
@@ -439,19 +412,19 @@ int cdecrypt(int argc, char **argv, bool showProgressDialog) {
         goto out;
 
     if (tmd->Version != 1) {
-        fprintf(stderr, "ERROR: Unsupported TMD version: %u\n", tmd->Version);
+        log_error("Unsupported TMD version: %u\n", tmd->Version);
         goto out;
     }
 
-    printf("Title version:%u\n", getbe16(&tmd->TitleVersion));
-    printf("Content count:%u\n", getbe16(&tmd->ContentCount));
+    log_info("Title version:%u\n", getbe16(&tmd->TitleVersion));
+    log_info("Content count:%u\n", getbe16(&tmd->ContentCount));
 
     if (strcmp((char *) (&tmd->Issuer), "Root-CA00000003-CP0000000b") == 0) {
         mbedtls_aes_setkey_dec(&ctx, WiiUCommonKey, sizeof(WiiUCommonKey) * 8);
     } else if (strcmp((char *) (&tmd->Issuer), "Root-CA00000004-CP00000010") == 0) {
         mbedtls_aes_setkey_dec(&ctx, WiiUCommonDevKey, sizeof(WiiUCommonDevKey) * 8);
     } else {
-        fprintf(stderr, "ERROR: Unknown Root type: '%s'\n", (char *) tmd + 0x140);
+        log_error("Unknown Root type: '%s'\n", (char *) tmd + 0x140);
         goto out;
     }
 
@@ -485,8 +458,8 @@ int cdecrypt(int argc, char **argv, bool showProgressDialog) {
     }
 
     if (getbe64(&tmd->Contents[0].Size) != (uint64_t) cnt_len) {
-        fprintf(stderr, "ERROR: Size of content %u is wrong: %u:%" PRIu64 "\n",
-                getbe32(&tmd->Contents[0].ID), cnt_len, getbe64(&tmd->Contents[0].Size));
+        log_error("Size of content %u is wrong: %u:%" PRIu64 "\n",
+                  getbe32(&tmd->Contents[0].ID), cnt_len, getbe64(&tmd->Contents[0].Size));
         goto out;
     }
 
@@ -494,16 +467,16 @@ int cdecrypt(int argc, char **argv, bool showProgressDialog) {
 
     if (getbe32(cnt) != FST_MAGIC) {
         sprintf(str, "%s%c%08X.dec", argv[1], PATH_SEP, getbe32(&tmd->Contents[0].ID));
-        fprintf(stderr, "ERROR: Unexpected content magic. Dumping decrypted file as '%s'.\n", str);
+        log_error("Unexpected content magic. Dumping decrypted file as '%s'.\n", str);
         file_dump(str, cnt, cnt_len);
         goto out;
     }
 
     struct FST *fst = (struct FST *) cnt;
 
-    printf("FSTInfo Entries: %u\n", getbe32(&fst->EntryCount));
+    log_info("FSTInfo Entries: %u\n", getbe32(&fst->EntryCount));
     if (getbe32(&fst->EntryCount) > MAX_ENTRIES) {
-        fprintf(stderr, "ERROR: Too many entries\n");
+        log_error("Too many entries\n");
         goto out;
     }
 
@@ -512,26 +485,22 @@ int cdecrypt(int argc, char **argv, bool showProgressDialog) {
     uint32_t entries = getbe32(cnt + 0x20 + (uintptr_t) getbe32(&fst->EntryCount) * 0x20 + 8);
     uint32_t name_offset = 0x20 + getbe32(&fst->EntryCount) * 0x20 + entries * 0x10;
 
-    printf("FST entries: %u\n", entries);
+    log_info("FST entries: %u\n", entries);
 
     char *dst_dir = ((argc <= 2) || is_file(argv[2])) ? argv[1] : argv[2];
-    printf("Extracting to directory: '%s'\n", dst_dir);
+    log_info("Extracting to directory: '%s'\n", dst_dir);
     create_path(dst_dir);
     char path[PATH_MAX] = {0};
     uint32_t entry[16];
     uint32_t l_entry[16];
 
     uint32_t level = 0;
-    if (showProgressDialog)
-        progressDialog();
     for (uint32_t i = 1; i < entries; i++) {
-        if (showProgressDialog) {
-            gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(progress_bar), (double) i / (double) entries);
-            gtk_progress_bar_set_text(GTK_PROGRESS_BAR(progress_bar), "Decrypting...");
-            // force redraw
-            while (gtk_events_pending())
-                gtk_main_iteration();
-        }
+        gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(getProgressBar()), (double) i / (double) entries);
+        gtk_progress_bar_set_text(GTK_PROGRESS_BAR(getProgressBar()), "Decrypting...");
+        // force redraw
+        while (gtk_events_pending())
+            gtk_main_iteration();
         if (level > 0) {
             while ((level >= 1) && (l_entry[level - 1] == i))
                 level--;
@@ -541,7 +510,7 @@ int cdecrypt(int argc, char **argv, bool showProgressDialog) {
             entry[level] = i;
             l_entry[level++] = getbe32(&fe[i].NextOffset);
             if (level >= MAX_LEVELS) {
-                fprintf(stderr, "ERROR: Too many levels\n");
+                log_error("Too many levels\n");
                 break;
             }
         } else {
@@ -564,8 +533,8 @@ int cdecrypt(int argc, char **argv, bool showProgressDialog) {
             if ((getbe16(&fe[i].Flags) & 4) == 0)
                 cnt_offset <<= 5;
 
-            printf("Size:%07X Offset:0x%010" PRIx64 " CID:%02X U:%02X %s\n", getbe32(&fe[i].FileLength),
-                   cnt_offset, getbe16(&fe[i].ContentID), getbe16(&fe[i].Flags), &path[short_path]);
+            log_trace("Size:%07X Offset:0x%010" PRIx64 " CID:%02X U:%02X %s\n", getbe32(&fe[i].FileLength),
+                      cnt_offset, getbe16(&fe[i].ContentID), getbe16(&fe[i].Flags), &path[short_path]);
 
             uint32_t cnt_file_id = getbe32(&tmd->Contents[getbe16(&fe[i].ContentID)].ID);
 
@@ -579,7 +548,7 @@ int cdecrypt(int argc, char **argv, bool showProgressDialog) {
                 printf("  Opening %s\n", str);
                 src = fopen_utf8(str, "rb");
                 if (src == NULL) {
-                    fprintf(stderr, "ERROR: Could not open: '%s'\n", str);
+                    log_error("Could not open: '%s'\n", str);
                     goto out;
                 }
                 uint16_t tmd_flags = tmd->Contents[getbe16(&fe[i].ContentID)].Type;
@@ -598,8 +567,6 @@ int cdecrypt(int argc, char **argv, bool showProgressDialog) {
     r = EXIT_SUCCESS;
 
 out:
-    if (showProgressDialog)
-        gtk_widget_destroy(GTK_WIDGET(window));
     free(tmd);
     free(tik);
     free(cnt);

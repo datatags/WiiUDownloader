@@ -2,6 +2,7 @@
 #include <cstring>
 #include <filesystem>
 #include <gtitles.h>
+#include <log.h>
 #include <titleInfo.h>
 #include <utils.h>
 
@@ -60,29 +61,13 @@ bool getUpdateFromBaseGame(uint64_t titleID, uint64_t *out) {
 
 void showError(const char *text) {
     Gtk::MessageDialog dlg(text, false, Gtk::MESSAGE_ERROR, Gtk::BUTTONS_OK);
+    log_error(text);
     dlg.run();
 }
 
 bool ask(const char *question) {
     Gtk::MessageDialog dlg(question, true, Gtk::MESSAGE_QUESTION, Gtk::BUTTONS_YES_NO, true);
     return dlg.run() == Gtk::RESPONSE_YES;
-}
-
-char *dirname(char *path) {
-    int len = strlen(path);
-    int last = len - 1;
-    char *parent = (char *) malloc(sizeof(char) * (len + 1));
-    strcpy(parent, path);
-    parent[len] = '\0';
-
-    while (last >= 0) {
-        if (parent[last] == '/') {
-            parent[last] = '\0';
-            break;
-        }
-        last--;
-    }
-    return parent;
 }
 
 char *show_folder_select_dialog() {
@@ -118,6 +103,10 @@ void removeFiles(const char *path) {
 bool fileExists(const char *filename) {
     std::ifstream file(filename);
     return file.good();
+}
+
+bool dirExists(const char *folder) {
+    return std::filesystem::is_directory(folder);
 }
 
 void setGameList(GtkWindow *window) {

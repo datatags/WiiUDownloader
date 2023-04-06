@@ -74,6 +74,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
         mbedcrypto
         mbedx509
         curl
+        pthread
         )
 
 enable_testing()
@@ -85,10 +86,11 @@ add_executable(tests
         src/keygen.cpp
         src/cdecrypt/cdecrypt.c
         src/cdecrypt/util.c
-        src/downloader.c
+        src/downloader.cpp
         src/fst.c
         src/settings.cpp
         src/jsoncpp.cpp
+        src/log.c
         tests/tests.cpp)
 
 target_link_libraries(tests
@@ -97,6 +99,7 @@ target_link_libraries(tests
         mbedcrypto
         mbedx509
         curl
+        pthread
         Catch2::Catch2WithMain)
 
 include(CTest)

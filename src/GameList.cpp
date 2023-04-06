@@ -16,16 +16,15 @@ void GameList::updateTitles(TITLE_CATEGORY cat, MCPRegion reg) {
     for (unsigned int i = 0; i < getTitleEntriesSize(cat); i++) {
         if (!(reg & infos[i].region))
             continue;
-        char *id = (char *) malloc(128);
-        hex(infos[i].tid, 16, id);
+        auto id = std::make_unique<char[]>(17);
+        hex(infos[i].tid, 16, id.get());
         Gtk::TreeModel::Row row = *(treeModel->append());
         row[columns.index] = i;
         row[columns.toQueue] = !queueMap.empty() && queueMap.find(infos[i].tid) != queueMap.end();
         row[columns.name] = infos[i].name;
         row[columns.region] = Glib::ustring::format(getFormattedRegion((MCPRegion) infos[i].region));
         row[columns.kind] = Glib::ustring::format(getFormattedKind(infos[i].tid));
-        row[columns.titleId] = Glib::ustring::format(id);
-        free(id);
+        row[columns.titleId] = Glib::ustring::format(id.get());
     }
 }
 
@@ -34,24 +33,21 @@ GameList::GameList(Glib::RefPtr<Gtk::Application> app, const Glib::RefPtr<Gtk::B
     this->builder = builder;
     this->infos = infos;
 
-    builder->get_widget("gameListWindow", gameListWindow);
-    gameListWindow->show();
-
     builder->get_widget("gamesButton", gamesButton);
     gamesButton->set_active();
-    gamesButton->signal_button_press_event().connect_notify(sigc::bind(sigc::mem_fun(*this, &GameList::on_button_selected), TITLE_CATEGORY_GAME));
+    gamesButton->signal_button_press_event().connect_notify(sigc::bind(sigc::mem_fun(*this, &GameList::on_button_selected), gamesButton, TITLE_CATEGORY_GAME));
 
     builder->get_widget("updatesButton", updatesButton);
-    updatesButton->signal_button_press_event().connect_notify(sigc::bind(sigc::mem_fun(*this, &GameList::on_button_selected), TITLE_CATEGORY_UPDATE));
+    updatesButton->signal_button_press_event().connect_notify(sigc::bind(sigc::mem_fun(*this, &GameList::on_button_selected), updatesButton, TITLE_CATEGORY_UPDATE));
 
     builder->get_widget("dlcsButton", dlcsButton);
-    dlcsButton->signal_button_press_event().connect_notify(sigc::bind(sigc::mem_fun(*this, &GameList::on_button_selected), TITLE_CATEGORY_DLC));
+    dlcsButton->signal_button_press_event().connect_notify(sigc::bind(sigc::mem_fun(*this, &GameList::on_button_selected), dlcsButton, TITLE_CATEGORY_DLC));
 
     builder->get_widget("demoButton", demosButton);
-    demosButton->signal_button_press_event().connect_notify(sigc::bind(sigc::mem_fun(*this, &GameList::on_button_selected), TITLE_CATEGORY_DEMO));
+    demosButton->signal_button_press_event().connect_notify(sigc::bind(sigc::mem_fun(*this, &GameList::on_button_selected), demosButton, TITLE_CATEGORY_DEMO));
 
     builder->get_widget("allButton", allButton);
-    allButton->signal_button_press_event().connect_notify(sigc::bind(sigc::mem_fun(*this, &GameList::on_button_selected), TITLE_CATEGORY_ALL));
+    allButton->signal_button_press_event().connect_notify(sigc::bind(sigc::mem_fun(*this, &GameList::on_button_selected), allButton, TITLE_CATEGORY_ALL));
 
     builder->get_widget("addToQueueButton", addToQueueButton);
     addToQueueButton->signal_button_press_event().connect_notify(sigc::mem_fun(*this, &GameList::on_add_to_queue));
@@ -121,15 +117,12 @@ GameList::GameList(Glib::RefPtr<Gtk::Application> app, const Glib::RefPtr<Gtk::B
     treeModel->set_sort_column(5, Gtk::SortType::SORT_ASCENDING);
 
     treeView->set_search_equal_func(sigc::mem_fun(*this, &GameList::on_search_equal));
+    
+    builder->get_widget("gameListWindow", gameListWindow);
+    gameListWindow->show();
 }
 
-GameList::~GameList() {
-    free(cancelQueue);
-    if (settings != nullptr) {
-        delete settings;
-        settings = nullptr;
-    }
-}
+GameList::~GameList() = default;
 
 void GameList::search_entry_changed() {
     m_refTreeModelFilter = Gtk::TreeModelFilter::create(treeModel);
@@ -185,17 +178,18 @@ void GameList::on_download_queue(GdkEventButton *ev) {
     if (queueMap.empty())
         return;
     gameListWindow->set_sensitive(false);
-    *cancelQueue = false;
+    setQueueCancelled(false);
+    progressDialog();
     for (auto queuedItem : queueMap) {
-        char *tid = (char *) malloc(128);
-        sprintf(tid, "%016llx", queuedItem.first);
-        downloadTitle(tid, queuedItem.second, decryptContents, cancelQueue, deleteEncryptedContents, true);
-        free(tid);
+        auto tid = std::make_unique<char[]>(17);
+        sprintf(tid.get(), "%016llx", queuedItem.first);
+        downloadTitle(tid.get(), queuedItem.second, decryptContents, deleteEncryptedContents);
     }
+    destroyProgressDialog();
     Glib::RefPtr<Gio::Notification> notification = Gio::Notification::create("WiiUDownloader");
     notification->set_body("Queue download(s) finished");
     this->app->send_notification(notification);
-    *cancelQueue = false;
+    setQueueCancelled(false);
     queueMap.clear();
     updateTitles(currentCategory, selectedRegion);
     gameListWindow->set_sensitive(true);
@@ -271,14 +265,19 @@ void GameList::on_add_to_queue(GdkEventButton *ev) {
     }
 }
 
-void GameList::on_button_selected(GdkEventButton *ev, TITLE_CATEGORY cat) {
+void GameList::on_button_selected(GdkEventButton *ev, Gtk::ToggleButton *selectedButton, TITLE_CATEGORY cat) {
     currentCategory = cat;
     infos = getTitleEntries(currentCategory);
+    for (auto button : {gamesButton, updatesButton, dlcsButton, demosButton, allButton}) {
+        if (button == selectedButton)
+            continue;
+        button->set_active(false);
+    }
     updateTitles(currentCategory, selectedRegion);
     search_entry_changed();
 }
 
-void GameList::on_region_selected(Gtk::ToggleButton *button, MCPRegion reg) {
+void GameList::on_region_selected(Gtk::CheckButton *button, MCPRegion reg) {
     if (button->get_active())
         selectedRegion = (MCPRegion) (selectedRegion | reg);
     else
@@ -292,16 +291,17 @@ void GameList::on_gamelist_row_activated(const Gtk::TreePath &treePath, Gtk::Tre
     Gtk::TreeModel::Row row = *selection->get_selected();
     if (row) {
         gameListWindow->set_sensitive(false);
-        char *selectedTID = (char *) malloc(128);
-        sprintf(selectedTID, "%016llx", infos[row[columns.index]].tid);
-        *cancelQueue = false;
-        downloadTitle(selectedTID, infos[row[columns.index]].name, decryptContents, cancelQueue, deleteEncryptedContents, true);
+        auto selectedTID = std::make_unique<char[]>(17);
+        sprintf(selectedTID.get(), "%016llx", infos[row[columns.index]].tid);
+        setQueueCancelled(false);
+        progressDialog();
+        downloadTitle(selectedTID.get(), infos[row[columns.index]].name, decryptContents, deleteEncryptedContents);
+        destroyProgressDialog();
         Glib::RefPtr<Gio::Notification> notification = Gio::Notification::create("WiiUDownloader");
         notification->set_body("Download finished");
         this->app->send_notification(notification);
-        *cancelQueue = false;
+        setQueueCancelled(false);
         gameListWindow->set_sensitive(true);
-        free(selectedTID);
     }
 }
 
@@ -328,9 +328,12 @@ void GameList::on_decrypt_menu_click() {
     if (selectedPath == nullptr)
         return;
 
+    progressDialog();
+
     char *argv[2] = {(char *) "WiiUDownloader", selectedPath};
-    if (cdecrypt(2, argv, true) != 0)
+    if (cdecrypt(2, argv) != 0)
         showError("Error: There was a problem decrypting the files.\nThe path specified for the download might be too long.\nPlease try downloading the files to a shorter path and try again.");
+    destroyProgressDialog();
 }
 
 void GameList::on_generate_fake_tik_menu_click() {
@@ -340,7 +343,7 @@ void GameList::on_generate_fake_tik_menu_click() {
     std::string path(selectedPath);
     FILE *tmd = fopen((path + "/title.tmd").c_str(), "rb");
     if (tmd == nullptr) {
-        showError("Error 1 while creating ticket!\nTicket can't be opened or not found");
+        showError("Error 1 while creating ticket!\nTMD can't be opened or not found");
         return;
     }
     size_t fSize = getFilesizeFromFile(tmd);
@@ -350,7 +353,7 @@ void GameList::on_generate_fake_tik_menu_click() {
     uint16_t titleVersion = bswap_16(tmdData->title_version);
     char titleID[17];
     sprintf(titleID, "%016llx", bswap_64(tmdData->tid));
-    char *titleKey = (char *) malloc(128);
+    char *titleKey = (char *) malloc(33);
     generateKey(titleID, titleKey);
     if (!generateTicket((path + "/title.tik").c_str(), strtoull(titleID, nullptr, 16), titleKey, titleVersion))
         showError("Error 2 while creating ticket!\nCouldn't write ticket");
@@ -363,7 +366,7 @@ void GameList::on_generate_fake_tik_menu_click() {
 void GameList::on_settings_menu_click() {
     gameListWindow->set_sensitive(FALSE);
     if (settings == nullptr)
-        settings = new SettingsMenu(builder);
+        settings = std::make_unique<SettingsMenu>(builder);
     else
         settings->getWindow()->show();
     gameListWindow->get_application()->add_window(*settings->getWindow());
