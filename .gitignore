@@ -2,6 +2,7 @@
 .vscode/
 .idea/
 .cache/
+cmake/
 build
 dist
 src/gtitles.c
