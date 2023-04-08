@@ -240,10 +240,10 @@ static int downloadFile(const char *download_url, const char *output_path, struc
     curl_easy_setopt(handle, CURLOPT_NOPROGRESS, 0L);
     curl_easy_setopt(handle, CURLOPT_XFERINFOFUNCTION, progress_func);
     curl_easy_setopt(handle, CURLOPT_PROGRESSDATA, progress);
-
+    curl_easy_setopt(handle, CURLOPT_VERBOSE, 1L);
     curl_easy_setopt(handle, CURLOPT_WRITEDATA, file);
 
-    curl_easy_setopt(handle, CURLOPT_FAILONERROR, 1L);
+    //curl_easy_setopt(handle, CURLOPT_FAILONERROR, 1L);
 
     if (share != NULL)
         curl_easy_setopt(handle, CURLOPT_SHARE, share);
@@ -251,6 +251,9 @@ static int downloadFile(const char *download_url, const char *output_path, struc
     CURLcode curlCode;
     int retryCount = 0;
     do {
+        log_info("Starting attempt %i of file %s", retryCount + 1, output_path);
+        // Reset file position to start in case we have a partially-written file
+        fseek(file, 0, SEEK_SET);
         curlCode = curl_easy_perform(handle);
         if ((curlCode == CURLE_OK) || cancelled || queueCancelled)
             break;
