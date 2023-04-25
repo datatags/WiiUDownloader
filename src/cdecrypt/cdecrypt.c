@@ -533,9 +533,6 @@ int cdecrypt(int argc, char **argv) {
             if ((getbe16(&fe[i].Flags) & 4) == 0)
                 cnt_offset <<= 5;
 
-            log_trace("Size:%07X Offset:0x%010" PRIx64 " CID:%02X U:%02X %s\n", getbe32(&fe[i].FileLength),
-                      cnt_offset, getbe16(&fe[i].ContentID), getbe16(&fe[i].Flags), &path[short_path]);
-
             uint32_t cnt_file_id = getbe32(&tmd->Contents[getbe16(&fe[i].ContentID)].ID);
 
             if (!(fe[i].Type & 0x80)) {
@@ -545,7 +542,8 @@ int cdecrypt(int argc, char **argv) {
                     if (is_file(str))
                         break;
                 }
-                printf("  Opening %s\n", str);
+                log_trace("Size:%07X Offset:0x%010" PRIx64 " CID:%02X U:%02X %s [%s]\n", getbe32(&fe[i].FileLength),
+                          cnt_offset, getbe16(&fe[i].ContentID), getbe16(&fe[i].Flags), &path[short_path], str);
                 src = fopen_utf8(str, "rb");
                 if (src == NULL) {
                     log_error("Could not open: '%s'\n", str);
